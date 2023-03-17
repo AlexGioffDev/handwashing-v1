@@ -55,6 +55,10 @@ var app = (function () {
     function space() {
         return text(' ');
     }
+    function listen(node, event, handler, options) {
+        node.addEventListener(event, handler, options);
+        return () => node.removeEventListener(event, handler, options);
+    }
     function attr(node, attribute, value) {
         if (value == null)
             node.removeAttribute(attribute);
@@ -366,12 +370,38 @@ var app = (function () {
         dispatch_dev('SvelteDOMRemove', { node });
         detach(node);
     }
+    function listen_dev(node, event, handler, options, has_prevent_default, has_stop_propagation, has_stop_immediate_propagation) {
+        const modifiers = options === true ? ['capture'] : options ? Array.from(Object.keys(options)) : [];
+        if (has_prevent_default)
+            modifiers.push('preventDefault');
+        if (has_stop_propagation)
+            modifiers.push('stopPropagation');
+        if (has_stop_immediate_propagation)
+            modifiers.push('stopImmediatePropagation');
+        dispatch_dev('SvelteDOMAddEventListener', { node, event, handler, modifiers });
+        const dispose = listen(node, event, handler, options);
+        return () => {
+            dispatch_dev('SvelteDOMRemoveEventListener', { node, event, handler, modifiers });
+            dispose();
+        };
+    }
     function attr_dev(node, attribute, value) {
         attr(node, attribute, value);
         if (value == null)
             dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
+    }
+    function prop_dev(node, property, value) {
+        node[property] = value;
+        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
+    }
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -409,6 +439,8 @@ var app = (function () {
     	let div1;
     	let div0;
     	let span;
+    	let t0;
+    	let t1;
 
     	const block = {
     		c: function create() {
@@ -416,17 +448,18 @@ var app = (function () {
     			div1 = element("div");
     			div0 = element("div");
     			span = element("span");
-    			span.textContent = "%";
+    			t0 = text(/*progress*/ ctx[0]);
+    			t1 = text("%");
     			attr_dev(span, "class", "sr-only");
-    			add_location(span, file$3, 15, 8, 330);
+    			add_location(span, file$3, 19, 8, 384);
     			attr_dev(div0, "class", "progress-bar svelte-yf0v46");
-    			set_style(div0, "width", "20%");
-    			add_location(div0, file$3, 14, 6, 275);
-    			attr_dev(div1, "bp", "offeset-5@md 4@md 12@sm");
+    			set_style(div0, "width", /*progress*/ ctx[0] + "%");
+    			add_location(div0, file$3, 18, 6, 321);
+    			attr_dev(div1, "bp", "offset-5@md 4@md 12@sm");
     			attr_dev(div1, "class", "progress-container svelte-yf0v46");
-    			add_location(div1, file$3, 13, 2, 207);
+    			add_location(div1, file$3, 17, 2, 254);
     			attr_dev(div2, "bp", "grid");
-    			add_location(div2, file$3, 12, 0, 189);
+    			add_location(div2, file$3, 16, 0, 236);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -436,8 +469,16 @@ var app = (function () {
     			append_dev(div2, div1);
     			append_dev(div1, div0);
     			append_dev(div0, span);
+    			append_dev(span, t0);
+    			append_dev(span, t1);
     		},
-    		p: noop,
+    		p: function update(ctx, [dirty]) {
+    			if (dirty & /*progress*/ 1) set_data_dev(t0, /*progress*/ ctx[0]);
+
+    			if (dirty & /*progress*/ 1) {
+    				set_style(div0, "width", /*progress*/ ctx[0] + "%");
+    			}
+    		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
@@ -456,22 +497,37 @@ var app = (function () {
     	return block;
     }
 
-    function instance$3($$self, $$props) {
+    function instance$3($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots('ProgressBar', slots, []);
-    	const writable_props = [];
+    	let { progress = 0 } = $$props;
+    	const writable_props = ['progress'];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<ProgressBar> was created with unknown prop '${key}'`);
     	});
 
-    	return [];
+    	$$self.$$set = $$props => {
+    		if ('progress' in $$props) $$invalidate(0, progress = $$props.progress);
+    	};
+
+    	$$self.$capture_state = () => ({ progress });
+
+    	$$self.$inject_state = $$props => {
+    		if ('progress' in $$props) $$invalidate(0, progress = $$props.progress);
+    	};
+
+    	if ($$props && "$$inject" in $$props) {
+    		$$self.$inject_state($$props.$$inject);
+    	}
+
+    	return [progress];
     }
 
     class ProgressBar extends SvelteComponentDev {
     	constructor(options) {
     		super(options);
-    		init(this, options, instance$3, create_fragment$3, safe_not_equal, {});
+    		init(this, options, instance$3, create_fragment$3, safe_not_equal, { progress: 0 });
 
     		dispatch_dev("SvelteRegisterComponent", {
     			component: this,
@@ -480,52 +536,94 @@ var app = (function () {
     			id: create_fragment$3.name
     		});
     	}
+
+    	get progress() {
+    		throw new Error("<ProgressBar>: Props cannot be read directly from the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
+    	}
+
+    	set progress(value) {
+    		throw new Error("<ProgressBar>: Props cannot be set directly on the component instance unless compiling with 'accessors: true' or '<svelte:options accessors/>'");
+    	}
     }
 
     /* src/Timer.svelte generated by Svelte v3.57.0 */
     const file$2 = "src/Timer.svelte";
 
     function create_fragment$2(ctx) {
-    	let div;
+    	let div0;
     	let h2;
+    	let t0;
     	let t1;
-    	let progressbar;
     	let t2;
+    	let progressbar;
+    	let t3;
+    	let div1;
     	let button;
+    	let t4;
     	let current;
-    	progressbar = new ProgressBar({ $$inline: true });
+    	let mounted;
+    	let dispose;
+
+    	progressbar = new ProgressBar({
+    			props: { progress: /*progressValue*/ ctx[2] },
+    			$$inline: true
+    		});
 
     	const block = {
     		c: function create() {
-    			div = element("div");
+    			div0 = element("div");
     			h2 = element("h2");
-    			h2.textContent = "Seconds Left:";
-    			t1 = space();
-    			create_component(progressbar.$$.fragment);
+    			t0 = text("Seconds Left: ");
+    			t1 = text(/*secondLeft*/ ctx[0]);
     			t2 = space();
+    			create_component(progressbar.$$.fragment);
+    			t3 = space();
+    			div1 = element("div");
     			button = element("button");
-    			button.textContent = "Start";
-    			attr_dev(h2, "bp", "offeset-5@md 4@md 12@sm");
-    			attr_dev(h2, "class", "svelte-158a00w");
-    			add_location(h2, file$2, 16, 2, 224);
-    			attr_dev(div, "bp", "grid");
-    			add_location(div, file$2, 15, 0, 206);
-    			attr_dev(button, "class", "start svelte-158a00w");
-    			add_location(button, file$2, 23, 0, 310);
+    			t4 = text("Start");
+    			attr_dev(h2, "bp", "offset-5@md 4@md 12@sm");
+    			attr_dev(h2, "class", "svelte-13cug7o");
+    			add_location(h2, file$2, 38, 2, 737);
+    			attr_dev(div0, "bp", "grid");
+    			add_location(div0, file$2, 37, 0, 719);
+    			button.disabled = /*isRunning*/ ctx[1];
+    			attr_dev(button, "bp", "offset-5@md 4@md 12@sm");
+    			attr_dev(button, "class", "start svelte-13cug7o");
+    			add_location(button, file$2, 44, 2, 875);
+    			attr_dev(div1, "bp", "grid");
+    			add_location(div1, file$2, 43, 0, 857);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, div, anchor);
-    			append_dev(div, h2);
-    			insert_dev(target, t1, anchor);
-    			mount_component(progressbar, target, anchor);
+    			insert_dev(target, div0, anchor);
+    			append_dev(div0, h2);
+    			append_dev(h2, t0);
+    			append_dev(h2, t1);
     			insert_dev(target, t2, anchor);
-    			insert_dev(target, button, anchor);
+    			mount_component(progressbar, target, anchor);
+    			insert_dev(target, t3, anchor);
+    			insert_dev(target, div1, anchor);
+    			append_dev(div1, button);
+    			append_dev(button, t4);
     			current = true;
+
+    			if (!mounted) {
+    				dispose = listen_dev(button, "click", /*startTimer*/ ctx[3], false, false, false, false);
+    				mounted = true;
+    			}
     		},
-    		p: noop,
+    		p: function update(ctx, [dirty]) {
+    			if (!current || dirty & /*secondLeft*/ 1) set_data_dev(t1, /*secondLeft*/ ctx[0]);
+    			const progressbar_changes = {};
+    			if (dirty & /*progressValue*/ 4) progressbar_changes.progress = /*progressValue*/ ctx[2];
+    			progressbar.$set(progressbar_changes);
+
+    			if (!current || dirty & /*isRunning*/ 2) {
+    				prop_dev(button, "disabled", /*isRunning*/ ctx[1]);
+    			}
+    		},
     		i: function intro(local) {
     			if (current) return;
     			transition_in(progressbar.$$.fragment, local);
@@ -536,11 +634,13 @@ var app = (function () {
     			current = false;
     		},
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(div);
-    			if (detaching) detach_dev(t1);
-    			destroy_component(progressbar, detaching);
+    			if (detaching) detach_dev(div0);
     			if (detaching) detach_dev(t2);
-    			if (detaching) detach_dev(button);
+    			destroy_component(progressbar, detaching);
+    			if (detaching) detach_dev(t3);
+    			if (detaching) detach_dev(div1);
+    			mounted = false;
+    			dispose();
     		}
     	};
 
@@ -555,17 +655,64 @@ var app = (function () {
     	return block;
     }
 
+    const totalSeconds = 20;
+
     function instance$2($$self, $$props, $$invalidate) {
+    	let progressValue;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots('Timer', slots, []);
+    	let secondLeft = totalSeconds;
+    	let isRunning = false;
+
+    	function startTimer() {
+    		$$invalidate(1, isRunning = true);
+
+    		const timer = setInterval(
+    			() => {
+    				$$invalidate(0, secondLeft -= 1);
+
+    				if (secondLeft == 0) {
+    					clearInterval(timer);
+    					$$invalidate(1, isRunning = false);
+    					$$invalidate(0, secondLeft = totalSeconds);
+    				}
+    			},
+    			1000
+    		);
+    	}
+
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== '$$' && key !== 'slot') console.warn(`<Timer> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ ProgressBar });
-    	return [];
+    	$$self.$capture_state = () => ({
+    		ProgressBar,
+    		totalSeconds,
+    		secondLeft,
+    		isRunning,
+    		startTimer,
+    		progressValue
+    	});
+
+    	$$self.$inject_state = $$props => {
+    		if ('secondLeft' in $$props) $$invalidate(0, secondLeft = $$props.secondLeft);
+    		if ('isRunning' in $$props) $$invalidate(1, isRunning = $$props.isRunning);
+    		if ('progressValue' in $$props) $$invalidate(2, progressValue = $$props.progressValue);
+    	};
+
+    	if ($$props && "$$inject" in $$props) {
+    		$$self.$inject_state($$props.$$inject);
+    	}
+
+    	$$self.$$.update = () => {
+    		if ($$self.$$.dirty & /*secondLeft*/ 1) {
+    			$$invalidate(2, progressValue = (totalSeconds - secondLeft) / totalSeconds * 100);
+    		}
+    	};
+
+    	return [secondLeft, isRunning, progressValue, startTimer];
     }
 
     class Timer extends SvelteComponentDev {
